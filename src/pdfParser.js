@@ -94,15 +94,35 @@ function extractFromRows(rows, re) {
 }
 
 function extractCNPJ(rows) {
-  for (const row of rows) {
-    const ms = [
-      ...row.tokens
-        .map(t => t.str)
-        .join(' ')
-        .matchAll(/CNPJ[:\s]*([0-9]{2}[\.\s]?[0-9]{3}[\.\s]?[0-9]{3}[\/\s]?[0-9]{4}[-\s]?[0-9]{2})/gi),
-    ]
-    if (ms.length) return ms[0][1].replace(/\D/g, '')
+  // Percorre as linhas buscando a que contém RAZÃO SOCIAL (cabeçalho do cliente).
+  // Essa linha — ou as imediatamente seguintes — contêm o CNPJ do cliente.
+  // Linhas com a palavra FORNECEDOR são ignoradas pois contêm o CNPJ do fornecedor.
+  for (let i = 0; i < rows.length; i++) {
+    const line = rows[i].tokens.map(t => t.str).join(' ')
+
+    if (/FORNECEDOR/i.test(line)) continue
+
+    if (/RAZ[ÃA]O\s+SOCIAL/i.test(line)) {
+      const m = line.match(/CNPJ[:\s]*([0-9]{2}[\.\s]?[0-9]{3}[\.\s]?[0-9]{3}[\/\s]?[0-9]{4}[-\s]?[0-9]{2})/i)
+      if (m) return m[1].replace(/\D/g, '')
+
+      for (let j = i + 1; j <= i + 3 && j < rows.length; j++) {
+        const next = rows[j].tokens.map(t => t.str).join(' ')
+        if (/FORNECEDOR/i.test(next)) break
+        const m2 = next.match(/CNPJ[:\s]*([0-9]{2}[\.\s]?[0-9]{3}[\.\s]?[0-9]{3}[\/\s]?[0-9]{4}[-\s]?[0-9]{2})/i)
+        if (m2) return m2[1].replace(/\D/g, '')
+      }
+    }
   }
+
+  // Fallback: primeiro CNPJ em linha que não seja do fornecedor
+  for (const row of rows) {
+    const line = row.tokens.map(t => t.str).join(' ')
+    if (/FORNECEDOR/i.test(line)) continue
+    const m = line.match(/CNPJ[:\s]*([0-9]{2}[\.\s]?[0-9]{3}[\.\s]?[0-9]{3}[\/\s]?[0-9]{4}[-\s]?[0-9]{2})/i)
+    if (m) return m[1].replace(/\D/g, '')
+  }
+
   return null
 }
 
