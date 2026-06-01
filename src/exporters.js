@@ -38,5 +38,5 @@ export function downloadCSV(pedido, suffix) {
 }
 
 export function downloadXLS(pedido, suffix) {
-  XLSX.writeFile(toXLS(pedido), `pedido_${suffix}.xls`, { bookType: 'xls' })
+  XLSX.writeFile(toXLS(pedido), `pedido_${suffix}.xls`, { bookType: 'biff8' })
 }
