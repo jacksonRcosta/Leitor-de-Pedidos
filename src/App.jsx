@@ -262,12 +262,12 @@ export default function App() {
                 </span>
               </div>
 
-              {/* Cabeçalho tabela */}
+              {/* Cabeçalho tabela — somente campos com conteúdo */}
               <div style={{
-                display: 'grid', gridTemplateColumns: '150px 1fr 70px 105px 90px',
+                display: 'grid', gridTemplateColumns: '1fr 140px',
                 background: '#f8fafc', borderBottom: '1px solid #e2e8f0',
               }}>
-                {[['Cód. Barras', 'left'], ['Descrição', 'left'], ['Qtde', 'right'], ['Preço Venda', 'right'], ['Desconto', 'right']].map(([h, a]) => (
+                {[['codembalagem', 'left'], ['quantidade', 'right']].map(([h, a]) => (
                   <div key={h} style={{
                     padding: '11px 16px', fontSize: 11, color: '#64748b',
                     fontWeight: 600, textTransform: 'uppercase', letterSpacing: .5, textAlign: a,
@@ -281,7 +281,7 @@ export default function App() {
                   <div
                     key={i}
                     style={{
-                      display: 'grid', gridTemplateColumns: '150px 1fr 70px 105px 90px',
+                      display: 'grid', gridTemplateColumns: '1fr 140px',
                       borderBottom: '1px solid #f1f5f9',
                       background: i % 2 !== 0 ? '#fafafa' : '#fff',
                       transition: 'background .1s',
@@ -289,34 +289,24 @@ export default function App() {
                     onMouseEnter={e => e.currentTarget.style.background = LBLUE}
                     onMouseLeave={e => e.currentTarget.style.background = i % 2 !== 0 ? '#fafafa' : '#fff'}
                   >
-                    <div style={{ padding: '10px 16px', fontFamily: 'monospace', color: BLUE2, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+                    <div style={{ padding: '10px 16px', fontFamily: 'monospace', color: BLUE2, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
                       {item.codigoBarras}
                     </div>
-                    <div style={{ padding: '10px 16px', color: '#374151', fontSize: 12, display: 'flex', alignItems: 'center' }}>
-                      {(item.descricao || '—').slice(0, 50)}
-                    </div>
-                    <div style={{ padding: '10px 16px', fontWeight: 700, color: '#1e293b', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                    <div style={{ padding: '10px 16px', fontWeight: 700, color: '#1e293b', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
                       {item.quantidade}
-                    </div>
-                    <div style={{ padding: '10px 16px', color: '#166534', fontWeight: 600, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-                      R$ {item.precoCompra}
-                    </div>
-                    <div style={{ padding: '10px 16px', color: '#94a3b8', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-                      {item.desconto}
                     </div>
                   </div>
                 ))}
               </div>
 
               {/* Rodapé */}
-              <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr 70px 105px 90px', background: BLUE }}>
-                <div style={{ padding: '12px 16px', color: 'rgba(255,255,255,.65)', fontSize: 12, fontWeight: 600, gridColumn: '1/3' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', background: BLUE }}>
+                <div style={{ padding: '12px 16px', color: 'rgba(255,255,255,.65)', fontSize: 12, fontWeight: 600 }}>
                   Total Geral
                 </div>
                 <div style={{ padding: '12px 16px', color: '#fff', fontWeight: 800, fontSize: 13, textAlign: 'right' }}>
                   {totalUn}
                 </div>
-                <div /><div />
               </div>
             </div>
           </>

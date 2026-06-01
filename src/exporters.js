@@ -1,5 +1,18 @@
 // ── Exportadores ──────────────────────────────────────────────────────────────
-// Gera CSV e XLS binário (BIFF8) reais, sem dependências externas.
+// Gera CSV e XLS binário (BIFF8) no layout de importação de pedido de venda.
+//
+// Layout esperado pelo sistema de importação:
+//   Linha 0: "cnpj" | <valor do cnpj>
+//   Linha 1 (cabeçalho): codproduto | codembalagem | quantidade | descricao | emba |
+//                        qtUnit | precoVenda | preço emba | preço emba st |
+//                        preço unit | preço tot | preco tot ion | preco tot ion st
+//   Linha 2+: somente colunas "codembalagem" (código de barras) e "quantidade"
+
+const HEADER = [
+  'codproduto', 'codembalagem', 'quantidade', 'descricao', 'emba',
+  'qtUnit', 'precoVenda', 'preço emba', 'preço emba st',
+  'preço unit', 'preço tot', 'preco tot ion', 'preco tot ion st',
+]
 
 function saveBlob(content, name, mime) {
   const url = URL.createObjectURL(new Blob([content], { type: mime }))
@@ -7,22 +20,32 @@ function saveBlob(content, name, mime) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-// ── CSV (separador ponto-e-vírgula, padrão pt-BR) ─────────────────────────────
+// Monta a matriz no layout de importação
+function buildMatrix(pedido) {
+  const matrix = [
+    ['cnpj', pedido.cnpj || ''],
+    HEADER,
+    ...pedido.items.map(i => [
+      '',                  // codproduto (vazio)
+      i.codigoBarras,      // codembalagem
+      i.quantidade,        // quantidade
+      '', '', '', '', '', '', '', '', '', '', // demais campos vazios
+    ]),
+  ]
+  return matrix
+}
+
+// ── CSV ───────────────────────────────────────────────────────────────────────
 export function downloadCSV(pedido, suffix) {
-  const header = 'CODIGO_BARRAS;QUANTIDADE;PRECO_VENDA;DESCONTO'
-  const rows = pedido.items
-    .map(i => `${i.codigoBarras};${i.quantidade};${i.precoCompra};${i.desconto}`)
-    .join('\n')
-  const content = '\uFEFF' + `${header}\n${rows}`
+  const matrix = buildMatrix(pedido)
+  const content = '\uFEFF' + matrix.map(row => row.join(';')).join('\n')
   saveBlob(content, `pedido_${suffix}.csv`, 'text/csv;charset=utf-8;')
 }
 
-// ── XLS binário BIFF8 (Excel 97-2003) — formato nativo real ───────────────────
-// Constrói o arquivo byte a byte. O Excel abre sem qualquer alerta de formato.
+// ── XLS binário BIFF8 (Excel 97-2003) ─────────────────────────────────────────
 function buildBIFF8(matrix) {
   const records = []
 
-  // Cria um record BIFF: [tipo:2][tamanho:2][dados]
   const rec = (type, data) => {
     const buf = new Uint8Array(4 + data.length)
     const dv = new DataView(buf.buffer)
@@ -31,106 +54,66 @@ function buildBIFF8(matrix) {
     buf.set(data, 4)
     records.push(buf)
   }
-
   const u8 = (arr) => Uint8Array.from(arr)
+  const strBytes = (s) => { const o = []; for (let i = 0; i < s.length; i++) o.push(s.charCodeAt(i) & 0xff); return o }
 
-  // Converte string ASCII/latin1 em bytes
-  const strBytes = (s) => {
-    const out = []
-    for (let i = 0; i < s.length; i++) out.push(s.charCodeAt(i) & 0xff)
-    return out
-  }
+  // BOF globals
+  const bofG = new Uint8Array(16)
+  new DataView(bofG.buffer).setUint16(0, 0x0600, true)
+  new DataView(bofG.buffer).setUint16(2, 0x0005, true)
+  rec(0x0809, bofG)
 
-  // --- Substream: Workbook Globals ---
-  const bofGlobals = new Uint8Array(16)
-  new DataView(bofGlobals.buffer).setUint16(0, 0x0600, true) // BIFF8
-  new DataView(bofGlobals.buffer).setUint16(2, 0x0005, true) // globals
-  rec(0x0809, bofGlobals)
-
-  // BOUNDSHEET (posição do BOF da worksheet será preenchida depois)
-  const sheetName = 'Pedido'
-  const nameBytes = strBytes(sheetName)
-  const bs = new Uint8Array(8 + nameBytes.length)
-  const bsDv = new DataView(bs.buffer)
-  bsDv.setUint32(0, 0, true)      // posição BOF (patch posterior)
-  bs[4] = 0                        // visível
-  bs[5] = 0                        // worksheet
-  bs[6] = nameBytes.length         // tamanho do nome
-  bs[7] = 0                        // 0 = string comprimida (1 byte/char)
-  bs.set(nameBytes, 8)
+  // BOUNDSHEET
+  const nb = strBytes('Pedido')
+  const bs = new Uint8Array(8 + nb.length)
+  new DataView(bs.buffer).setUint32(0, 0, true)
+  bs[4] = 0; bs[5] = 0; bs[6] = nb.length; bs[7] = 0; bs.set(nb, 8)
   rec(0x0085, bs)
-  const boundsheetIndex = records.length - 1
+  const bi = records.length - 1
 
-  // EOF dos globals
-  rec(0x000A, u8([]))
+  rec(0x000A, u8([])) // EOF globals
 
-  // Calcula posição onde começa o BOF da worksheet
   let pos = 0
   for (const r of records) pos += r.length
 
-  // --- Substream: Worksheet ---
-  const bofWS = new Uint8Array(16)
-  new DataView(bofWS.buffer).setUint16(0, 0x0600, true)
-  new DataView(bofWS.buffer).setUint16(2, 0x0010, true) // worksheet
-  rec(0x0809, bofWS)
+  // BOF worksheet
+  const bofW = new Uint8Array(16)
+  new DataView(bofW.buffer).setUint16(0, 0x0600, true)
+  new DataView(bofW.buffer).setUint16(2, 0x0010, true)
+  rec(0x0809, bofW)
+  new DataView(records[bi].buffer).setUint32(4, pos, true)
 
-  // Corrige a posição no BOUNDSHEET (+4 = pula header do próprio record)
-  new DataView(records[boundsheetIndex].buffer).setUint32(4, pos, true)
+  // Células
+  matrix.forEach((row, r) => row.forEach((val, c) => {
+    if (val === '' || val === null || val === undefined) return
+    if (typeof val === 'number' && isFinite(val)) {
+      const d = new Uint8Array(14)
+      const dv = new DataView(d.buffer)
+      dv.setUint16(0, r, true); dv.setUint16(2, c, true); dv.setUint16(4, 0, true)
+      dv.setFloat64(6, val, true)
+      rec(0x0203, d) // NUMBER
+    } else {
+      const s = String(val)
+      const sb = strBytes(s)
+      const d = new Uint8Array(9 + sb.length)
+      const dv = new DataView(d.buffer)
+      dv.setUint16(0, r, true); dv.setUint16(2, c, true); dv.setUint16(4, 0, true)
+      dv.setUint16(6, s.length, true); d[8] = 0; d.set(sb, 9)
+      rec(0x0204, d) // LABEL
+    }
+  }))
 
-  // Escreve as células
-  matrix.forEach((row, r) => {
-    row.forEach((val, c) => {
-      if (val === '' || val === null || val === undefined) return
-      if (typeof val === 'number' && isFinite(val)) {
-        // NUMBER record (0x0203)
-        const d = new Uint8Array(14)
-        const dv = new DataView(d.buffer)
-        dv.setUint16(0, r, true)
-        dv.setUint16(2, c, true)
-        dv.setUint16(4, 0, true)        // formato
-        dv.setFloat64(6, val, true)
-        rec(0x0203, d)
-      } else {
-        // LABEL record (0x0204) — texto
-        const s = String(val)
-        const sb = strBytes(s)
-        const d = new Uint8Array(9 + sb.length)
-        const dv = new DataView(d.buffer)
-        dv.setUint16(0, r, true)
-        dv.setUint16(2, c, true)
-        dv.setUint16(4, 0, true)        // formato
-        dv.setUint16(6, s.length, true) // tamanho do texto
-        d[8] = 0                         // 0 = comprimido
-        d.set(sb, 9)
-        rec(0x0204, d)
-      }
-    })
-  })
+  rec(0x000A, u8([])) // EOF worksheet
 
-  // EOF da worksheet
-  rec(0x000A, u8([]))
-
-  // Concatena todos os records
   let total = 0
   for (const r of records) total += r.length
-  const result = new Uint8Array(total)
+  const out = new Uint8Array(total)
   let off = 0
-  for (const r of records) { result.set(r, off); off += r.length }
-  return result
+  for (const r of records) { out.set(r, off); off += r.length }
+  return out
 }
 
 export function downloadXLS(pedido, suffix) {
-  const matrix = [
-    ['CNPJ', pedido.cnpj || ''],
-    [],
-    ['CODIGO_BARRAS', 'QUANTIDADE', 'PRECO_VENDA', 'DESCONTO'],
-    ...pedido.items.map(i => [
-      i.codigoBarras,
-      i.quantidade,
-      parseFloat(i.precoCompra.replace(',', '.')),
-      parseFloat(i.desconto.replace(',', '.')),
-    ]),
-  ]
-  const bytes = buildBIFF8(matrix)
-  saveBlob(bytes, `pedido_${suffix}.xls`, 'application/vnd.ms-excel')
+  const matrix = buildMatrix(pedido)
+  saveBlob(buildBIFF8(matrix), `pedido_${suffix}.xls`, 'application/vnd.ms-excel')
 }
